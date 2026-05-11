@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
 import os
-import csv
-import json
 import torch
 import torch.nn as nn
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import numpy as np
-import matplotlib.pyplot as plt
 from tqdm import tqdm
-from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
+from sklearn.metrics import precision_recall_fscore_support
 import warnings
 import timm
 from typing import Optional, Tuple
 from timm.layers import to_2tuple, trunc_normal_
+from evaluate_report_utils import (
+    format_eval_report,
+    save_confusion_matrix_counts,
+    write_report,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -48,90 +50,11 @@ def save_evaluation_results(
     dataset,
 ):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    report_path = os.path.join(OUTPUT_DIR, "report.txt")
-    per_class_path = os.path.join(OUTPUT_DIR, "per_class_metrics.csv")
-    summary_path = os.path.join(OUTPUT_DIR, "summary.json")
-    predictions_path = os.path.join(OUTPUT_DIR, "predictions.csv")
-
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(report_lines) + "\n")
-
-    with open(per_class_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["class", "support", "precision", "recall", "f1", "avg_loss"])
-        writer.writeheader()
-        for row in results:
-            writer.writerow({
-                "class": row["name"],
-                "support": int(row["support"]),
-                "precision": float(row["p"]),
-                "recall": float(row["r"]),
-                "f1": float(row["f1"]),
-                "avg_loss": float(row["loss"]),
-            })
-
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
-
-    with open(predictions_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["image_path", "true_idx", "true_class", "pred_idx", "pred_class"])
-        writer.writeheader()
-        for idx, (label, pred) in enumerate(zip(all_labels, all_preds)):
-            image_path = dataset.samples[idx][0]
-            writer.writerow({
-                "image_path": image_path,
-                "true_idx": int(label),
-                "true_class": dataset.classes[int(label)],
-                "pred_idx": int(pred),
-                "pred_class": dataset.classes[int(pred)],
-            })
-
-    print(f"💾 评估结果已保存至: {OUTPUT_DIR}")
+    write_report(report_lines, OUTPUT_DIR)
+    print(f"💾 report.txt 已保存至: {OUTPUT_DIR}")
 
 def save_confusion_matrices(all_labels, all_preds, class_names):
-    labels = list(range(len(class_names)))
-    cm = confusion_matrix(all_labels, all_preds, labels=labels)
-    cm_norm = cm.astype(np.float32) / np.maximum(cm.sum(axis=1, keepdims=True), 1)
-
-    np.savetxt(os.path.join(OUTPUT_DIR, "confusion_matrix_counts.csv"), cm, fmt="%d", delimiter=",")
-    np.savetxt(os.path.join(OUTPUT_DIR, "confusion_matrix_normalized.csv"), cm_norm, fmt="%.6f", delimiter=",")
-
-    for matrix, filename, title, fmt in [
-        (cm, "confusion_matrix_counts.png", "Confusion Matrix (Counts)", "d"),
-        (cm_norm, "confusion_matrix_normalized.png", "Confusion Matrix (Row Normalized)", ".2f"),
-    ]:
-        fig_size = max(10, len(class_names) * 0.55)
-        fig, ax = plt.subplots(figsize=(fig_size, fig_size))
-        im = ax.imshow(matrix, interpolation="nearest", cmap="Blues")
-        ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        ax.set(
-            xticks=np.arange(len(class_names)),
-            yticks=np.arange(len(class_names)),
-            xticklabels=class_names,
-            yticklabels=class_names,
-            ylabel="True Label",
-            xlabel="Predicted Label",
-            title=title,
-        )
-        plt.setp(ax.get_xticklabels(), rotation=60, ha="right", rotation_mode="anchor")
-
-        threshold = matrix.max() / 2.0 if matrix.size and matrix.max() > 0 else 0.5
-        for i in range(matrix.shape[0]):
-            for j in range(matrix.shape[1]):
-                value = matrix[i, j]
-                ax.text(
-                    j,
-                    i,
-                    format(value, fmt),
-                    ha="center",
-                    va="center",
-                    color="white" if value > threshold else "black",
-                    fontsize=6,
-                )
-
-        fig.tight_layout()
-        fig.savefig(os.path.join(OUTPUT_DIR, filename), dpi=300)
-        plt.close(fig)
+    save_confusion_matrix_counts(all_labels, all_preds, class_names, OUTPUT_DIR)
 
 # ==============================================================================
 # 1. 核心架构逻辑 (必须与训练代码100%一致，用于支撑结构注入)
@@ -292,16 +215,6 @@ def main():
         all_labels, all_preds, labels=list(range(num_classes)), zero_division=0
     )
     
-    report_lines = []
-    report_lines.append("=== 大豆品种分类：Swin + Diff 评估报告 ===")
-    report_lines.append(f"测试集路径: {DATA_DIR}")
-    report_lines.append(f"权重路径: {WEIGHT_PATH}")
-    report_lines.append(f"类别数: {num_classes}")
-    report_lines.append(f"样本数: {len(dataset)}")
-    report_lines.append("\n" + "-"*92)
-    report_lines.append(f"{'类别 (Class)':<15} | {'样本数':<5} | {'精确率 (P)':<9} | {'召回率 (R)':<9} | {'F1分数':<8} | {'平均 Loss'}")
-    report_lines.append("-" * 92)
-
     results = []
     for i, name in enumerate(class_names):
         avg_loss = class_loss_sum[i] / class_count[i] if class_count[i] > 0 else 0.0
@@ -309,18 +222,29 @@ def main():
 
     # 按 F1 分数从小到大排序输出，方便你直接一眼揪出“钉子户”大豆
     results.sort(key=lambda x: x['f1'], reverse=False)
-    for row in results:
-        report_lines.append(f"{row['name']:<16} | {row['support']:<6} | {row['p']*100:>6.2f}%   | {row['r']*100:>6.2f}%   | {row['f1']*100:>6.2f}%   | {row['loss']:.4f}")
 
     avg_p, avg_r, avg_f1 = np.average(precision, weights=support), np.average(recall, weights=support), np.average(f1, weights=support)
     macro_f1 = np.mean(f1)
     total_count = sum(class_count.values())
     global_avg_loss = sum(class_loss_sum.values()) / total_count if total_count > 0 else 0
-
-    report_lines.append("-" * 92)
-    report_lines.append(f"{'加权平均 (Weighted)':<18} | {total_count:<6} | {avg_p*100:>6.2f}%   | {avg_r*100:>6.2f}%   | {avg_f1*100:>6.2f}%   | {global_avg_loss:.4f}")
-    report_lines.append(f"{'宏平均 (Macro)':<18} | {'-':<6} | {np.mean(precision)*100:>6.2f}%   | {np.mean(recall)*100:>6.2f}%   | {macro_f1*100:>6.2f}%   | {'-':<6}")
-    report_lines.append("=================================================================================")
+    accuracy = float(np.mean(np.array(all_labels) == np.array(all_preds))) if all_labels else 0.0
+    report_lines = format_eval_report(
+        model_name="swin_diff",
+        data_dir=DATA_DIR,
+        weight_path=WEIGHT_PATH,
+        class_index_path=None,
+        num_classes=num_classes,
+        num_samples=len(dataset),
+        accuracy=accuracy,
+        macro_precision=float(np.mean(precision)),
+        macro_recall=float(np.mean(recall)),
+        macro_f1=float(macro_f1),
+        weighted_precision=float(avg_p),
+        weighted_recall=float(avg_r),
+        weighted_f1=float(avg_f1),
+        avg_loss=float(global_avg_loss),
+        rows=results,
+    )
     output_text = "\n".join(report_lines)
     print(output_text + "\n")
 
