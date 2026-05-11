@@ -1,0 +1,51 @@
+
+#path: /nfs/my/Huang/hjx/algorithm-head/
+path: /nfs/spy/soybean_detect
+
+
+train: ../data/target_data/images/train
+val: ../data/target_data/images/val
+
+
+# Classes
+names:
+  0: nn49
+  1: nn60
+  2: zld105
+  3: sn29
+  4: lk314
+  5: nn47
+  6: jd17
+  7: hd16
+  8: jng20839
+  9: nn43
+  10: nn42
+  11: sn23
+  12: b73
+  13: sz2
+  14: zd57
+  15: xd18
+  16: zd53
+  17: zd61
+  18: zd59
+  19: zd51
+  20: sd30
+  21: sd29
+  22: xzd1
+  23: zh301
+  24: nn55
+nc: 25
+
+# data augmentation settings
+#hsv_h: 0.05  # image HSV-Hue augmentation (fraction)
+#hsv_s: 0.05  # image HSV-Saturation augmentation (fraction)
+#hsv_v: 0.05  # image HSV-Value augmentation (fraction)
+#degrees: 10.0  # image rotation (+/- deg)
+#translate: 0.05  # image translation (+/- fraction)
+#scale: 0.05  # image scale (+/- gain)
+#shear: 0.05  # image shear (+/- deg) from -0.5 to 0.5
+#perspective: 0.05  # image perspective (+/- fraction), range 0-0.001
+#flipud: 0.25  # image flip up-down (probability)
+#fliplr: 0.25  # image flip left-right (probability)
+# mosaic: 0.3  # image mosaic (probability)
+#mixup: 0.1  # image mixup (probability)

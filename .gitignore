@@ -1,0 +1,35 @@
+# macOS / IDE
+.DS_Store
+.idea/
+
+# Office temporary files
+.~*
+
+# Python cache and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Logs and generated runtime outputs
+*.log
+train_log.txt
+runs/
+outputs/
+
+# Datasets and local training artifacts
+data/
+datasets/
+*.cache
+
+# Model weights and large checkpoints
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.weights
+
+# Keep lightweight class mapping files under resnet/checkpoints tracked.
+!resnet/checkpoints/
+!resnet/checkpoints/*.json
