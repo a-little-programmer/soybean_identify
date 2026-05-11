@@ -13,32 +13,26 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 默认扫描 resnet/ 下所有 evaluate*.py 对应的同名输出目录。
 # 每个目录只读取 report.txt，不再依赖 summary.json 或 per_class_metrics.csv。
 OUTPUT_DIR = os.path.join(BASE_DIR, "evaluate_bar_charts")
+OUTPUT_IMAGE_NAME = "summary_metrics_bar.png"
 
-SUMMARY_METRICS = [
-    ("Accuracy (%)", "Accuracy"),
-    ("Macro Precision (%)", "Macro Precision"),
-    ("Macro Recall (%)", "Macro Recall"),
-    ("Macro-F1 (%)", "Macro-F1"),
-    ("Weighted Precision (%)", "Weighted Precision"),
-    ("Weighted Recall (%)", "Weighted Recall"),
-    ("Weighted-F1 (%)", "Weighted-F1"),
-]
+# 只改这里就能控制总览图画哪些指标。
+# 可选项：Accuracy、Macro Precision、Macro Recall、Macro-F1、
+#        Weighted Precision、Weighted Recall、Weighted-F1
+METRICS_TO_PLOT = ["Accuracy", "Macro-F1", "Weighted-F1"]
 
-PER_CLASS_METRICS = [
-    ("precision", "Precision"),
-    ("recall", "Recall"),
-    ("f1", "F1"),
-]
+# None 表示自动计算。论文图需要放大差异时，可改成 70、100 这类固定范围。
+Y_AXIS_MIN = None
+Y_AXIS_MAX = 100
 
-
-def safe_file_name(name):
-    chars = []
-    for ch in str(name):
-        if ch.isalnum() or ch in ("-", "_"):
-            chars.append(ch)
-        else:
-            chars.append("_")
-    return "".join(chars).strip("_")
+REPORT_METRIC_KEYS = {
+    "Accuracy": "Accuracy (%)",
+    "Macro Precision": "Macro Precision (%)",
+    "Macro Recall": "Macro Recall (%)",
+    "Macro-F1": "Macro-F1 (%)",
+    "Weighted Precision": "Weighted Precision (%)",
+    "Weighted Recall": "Weighted Recall (%)",
+    "Weighted-F1": "Weighted-F1 (%)",
+}
 
 
 def get_evaluate_output_dirs():
@@ -91,8 +85,6 @@ def parse_report(report_dir_name, report_path):
     for section in split_report_sections(text):
         model_name = None
         summary = {}
-        rows = []
-        in_class_table = False
 
         for line in section:
             stripped = line.strip()
@@ -101,41 +93,14 @@ def parse_report(report_dir_name, report_path):
                 continue
 
             key, value = parse_summary_line(stripped)
-            if key in {metric_key for metric_key, _ in SUMMARY_METRICS}:
+            if key in REPORT_METRIC_KEYS.values():
                 summary[key] = value
-                continue
-
-            if stripped == "[各类别指标]":
-                in_class_table = True
-                continue
-
-            if not in_class_table or "|" not in line:
-                continue
-
-            parts = [part.strip() for part in line.split("|")]
-            if len(parts) != 6:
-                continue
-            if parts[0] in ("Class", "Weighted Average", "Macro Average"):
-                continue
-
-            try:
-                rows.append({
-                    "class": parts[0],
-                    "support": int(parts[1]),
-                    "precision": float(parts[2]),
-                    "recall": float(parts[3]),
-                    "f1": float(parts[4]),
-                    "avg_loss": float(parts[5]),
-                })
-            except ValueError:
-                continue
 
         if model_name and summary:
             parsed.append({
                 "eval_dir": report_dir_name,
                 "model": model_name,
                 "summary": summary,
-                "rows": rows,
             })
 
     return parsed
@@ -157,9 +122,13 @@ def autolabel(ax, rects):
 
 def plot_summary_grouped_bars(records):
     available_metrics = []
-    for report_key, label in SUMMARY_METRICS:
+    for metric_name in METRICS_TO_PLOT:
+        if metric_name not in REPORT_METRIC_KEYS:
+            print(f"跳过未知指标: {metric_name}")
+            continue
+        report_key = REPORT_METRIC_KEYS[metric_name]
         if any(report_key in record["summary"] for record in records):
-            available_metrics.append((report_key, label))
+            available_metrics.append((report_key, metric_name))
 
     if not available_metrics:
         print("未在 report.txt 中解析到总体指标，跳过总体指标柱状图。")
@@ -167,13 +136,13 @@ def plot_summary_grouped_bars(records):
 
     labels = [record["model"] for record in records]
     x = np.arange(len(labels))
-    width = min(0.12, 0.8 / max(len(available_metrics), 1))
+    width = min(0.22, 0.8 / max(len(available_metrics), 1))
     offsets = (np.arange(len(available_metrics)) - (len(available_metrics) - 1) / 2) * width
 
-    fig_width = max(12, len(labels) * 1.35)
+    fig_width = max(9, len(labels) * 1.2)
     fig, ax = plt.subplots(figsize=(fig_width, 6), dpi=300)
 
-    colors = ["#4C78A8", "#F58518", "#54A24B", "#B279A2", "#E45756", "#72B7B2", "#FF9DA6"]
+    colors = ["#4C78A8", "#F58518", "#54A24B"]
     max_score = 0.0
     for i, (report_key, label) in enumerate(available_metrics):
         values = [record["summary"].get(report_key, 0.0) for record in records]
@@ -194,9 +163,11 @@ def plot_summary_grouped_bars(records):
     ax.set_xlabel("Model", fontweight="bold")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=25, ha="right")
-    ax.set_ylim(0, min(100, max(10, max_score + 8)))
+    y_min = Y_AXIS_MIN if Y_AXIS_MIN is not None else 0
+    y_max = Y_AXIS_MAX if Y_AXIS_MAX is not None else min(100, max(10, max_score + 8))
+    ax.set_ylim(y_min, y_max)
     ax.grid(axis="y", linestyle="--", alpha=0.45, zorder=0)
-    ax.legend(loc="upper left", fontsize=8)
+    ax.legend(loc="upper left", fontsize=9)
     ax.set_title("Evaluate Summary Metrics", fontweight="bold")
 
     for spine in ax.spines.values():
@@ -204,58 +175,10 @@ def plot_summary_grouped_bars(records):
         spine.set_linewidth(1.0)
 
     plt.tight_layout()
-    out_path = os.path.join(OUTPUT_DIR, "summary_metrics_bar.png")
+    out_path = os.path.join(OUTPUT_DIR, OUTPUT_IMAGE_NAME)
     plt.savefig(out_path, dpi=300)
     plt.close(fig)
     print(f"已保存总体指标柱状图: {out_path}")
-
-
-def plot_per_class_bars(record):
-    if not record["rows"]:
-        return
-
-    class_names = [row["class"] for row in record["rows"]]
-    x = np.arange(len(class_names))
-
-    fig_width = max(12, len(class_names) * 0.34)
-    fig, axes = plt.subplots(
-        len(PER_CLASS_METRICS),
-        1,
-        figsize=(fig_width, 10),
-        dpi=300,
-        sharex=True,
-    )
-
-    if len(PER_CLASS_METRICS) == 1:
-        axes = [axes]
-
-    colors = ["#4C78A8", "#F58518", "#54A24B"]
-    for ax, (metric_key, metric_label), color in zip(axes, PER_CLASS_METRICS, colors):
-        values = [row[metric_key] for row in record["rows"]]
-        ax.bar(
-            x,
-            values,
-            color=color,
-            edgecolor="black",
-            linewidth=0.5,
-            zorder=3,
-        )
-        ax.set_ylabel(f"{metric_label} (%)", fontweight="bold")
-        ax.set_ylim(0, 100)
-        ax.grid(axis="y", linestyle="--", alpha=0.45, zorder=0)
-
-    axes[-1].set_xlabel("Class", fontweight="bold")
-    axes[-1].set_xticks(x)
-    axes[-1].set_xticklabels(class_names, rotation=60, ha="right", fontsize=8)
-
-    fig.suptitle(f"{record['model']} Per-Class Metrics", fontweight="bold")
-    plt.tight_layout(rect=(0, 0, 1, 0.97))
-
-    out_name = f"{safe_file_name(record['eval_dir'])}_{safe_file_name(record['model'])}_per_class_bar.png"
-    out_path = os.path.join(OUTPUT_DIR, out_name)
-    plt.savefig(out_path, dpi=300)
-    plt.close(fig)
-    print(f"已保存各类别指标柱状图: {out_path}")
 
 
 def main():
@@ -274,10 +197,8 @@ def main():
         return
 
     plot_summary_grouped_bars(records)
-    for record in records:
-        plot_per_class_bars(record)
 
-    print(f"柱状图输出目录: {OUTPUT_DIR}")
+    print(f"总览柱状图输出目录: {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":
