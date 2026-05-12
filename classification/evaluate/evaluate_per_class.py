@@ -19,12 +19,13 @@ from evaluate_report_utils import (
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../data/classifier_dataset_hsv/test"))  # 请确保指向你的测试集
+CHECKPOINT_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../result/checkpoints"))
 
 MODEL_PATH = [
-    os.path.join(BASE_DIR, "checkpoints", "best_regnet_soybean.pth"),
-    os.path.join(BASE_DIR, "checkpoints", "best_resnet50_soybean.pth"),
-    os.path.join(BASE_DIR, "checkpoints", "best_vit_soybean.pth"),
-    os.path.join(BASE_DIR, "checkpoints", "best_swin_soybean.pth"),
+    os.path.join(CHECKPOINT_DIR, "best_regnet_soybean.pth"),
+    os.path.join(CHECKPOINT_DIR, "best_resnet50_soybean.pth"),
+    os.path.join(CHECKPOINT_DIR, "best_vit_soybean.pth"),
+    os.path.join(CHECKPOINT_DIR, "best_swin_soybean.pth"),
 ]
 
 MODEL_ARCH = [

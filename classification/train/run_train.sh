@@ -11,25 +11,25 @@ echo "任务开始时间: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "========================================"
 
 # --- 第一步 ---
-echo "[1/3] 正在执行 regnet_train.py ..."
-python /nfs/spy/soybean_detect/code/resnet/regnet_train.py
+echo "[1/4] 正在执行 regnet_train.py ..."
+python /nfs/spy/soybean_detect/code/classification/train/regnet_train.py
 echo ">>> regnet_train.py 执行成功"
 echo "----------------------------------------"
 
 # --- 第二步 ---
-echo "[2/3] 正在执行 resnet_train.py ..."
-python /nfs/spy/soybean_detect/code/resnet/resnet_train.py
+echo "[2/4] 正在执行 resnet_train.py ..."
+python /nfs/spy/soybean_detect/code/classification/train/resnet_train.py
 echo ">>> resnet_train.py 执行成功"
 echo "----------------------------------------"
 
 # --- 第三步 ---
-echo "[3/3] 正在执行 swin_train.py ..."
-python /nfs/spy/soybean_detect/code/resnet/swin_train.py
+echo "[3/4] 正在执行 swin_train.py ..."
+python /nfs/spy/soybean_detect/code/classification/train/swin/swin_train.py
 echo ">>> swin_train.py 执行成功"
 
 # --- 第四步 ---
 echo "[4/4] 正在执行 vit_train.py ..."
-python /nfs/spy/soybean_detect/code/resnet/vit_train.py
+python /nfs/spy/soybean_detect/code/classification/train/vit/vit_train.py
 echo ">>> vit_train.py 执行成功"
 
 echo "========================================"

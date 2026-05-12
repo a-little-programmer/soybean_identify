@@ -9,8 +9,9 @@ import numpy as np
 # 配置区域
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+EVALUATE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../evaluate"))
 
-# 默认扫描 resnet/ 下所有 evaluate*.py 对应的同名输出目录。
+# 默认扫描 classification/evaluate/ 下所有 evaluate*.py 对应的同名输出目录。
 # 每个目录只读取 report.txt，不再依赖 summary.json 或 per_class_metrics.csv。
 OUTPUT_DIR = os.path.join(BASE_DIR, "evaluate_bar_charts")
 OUTPUT_IMAGE_NAME = "summary_metrics_bar.png"
@@ -46,12 +47,12 @@ REPORT_METRIC_KEYS = {
 
 def get_evaluate_output_dirs():
     dirs = []
-    for file_name in sorted(os.listdir(BASE_DIR)):
+    for file_name in sorted(os.listdir(EVALUATE_DIR)):
         if file_name == "evaluate_report_utils.py":
             continue
         if not (file_name.startswith("evaluate") and file_name.endswith(".py")):
             continue
-        eval_dir = os.path.join(BASE_DIR, os.path.splitext(file_name)[0])
+        eval_dir = os.path.join(EVALUATE_DIR, os.path.splitext(file_name)[0])
         report_path = os.path.join(eval_dir, "report.txt")
         if os.path.isfile(report_path):
             dirs.append((os.path.basename(eval_dir), report_path))
@@ -216,7 +217,7 @@ def main():
         records.extend(parse_report(eval_dir_name, report_path))
 
     if not records:
-        print("未找到可解析的 report.txt。请先运行 resnet/evaluate*.py 生成统一格式报告。")
+        print("未找到可解析的 report.txt。请先运行 classification/evaluate/evaluate*.py 生成统一格式报告。")
         return
 
     plot_summary_grouped_bars(records)

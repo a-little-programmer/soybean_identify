@@ -12,8 +12,8 @@ from tqdm import tqdm  # 引入进度条库，如果没有请 pip install tqdm
 # ================= 配置区域 =================
 # 1. 模型路径
 YOLO_MODEL_PATH = "../data/target_data/soybean_detect.pt" 
-RESNET_MODEL_PATH = "/nfs/spy/soybean_detect/code/resnet/checkpoints/best_resnet50_soybean.pth"
-CLASS_INDICES_PATH = "/nfs/spy/soybean_detect/code/resnet/checkpoints/class_indices.json"
+RESNET_MODEL_PATH = "/nfs/spy/soybean_detect/code/result/checkpoints/best_resnet50_soybean.pth"
+CLASS_INDICES_PATH = "/nfs/spy/soybean_detect/code/result/checkpoints/class_indices_resnet50.json"
 
 # 2. 文件夹路径配置 (修改这里)
 # 输入文件夹：存放待检测图片的目录

@@ -21,16 +21,15 @@ import timm
 warnings.filterwarnings("ignore")
 
 # ==============================
-# 0. 基础配置 (消融实验基线对齐)
+# 0. 基础配置 (与 swin_diff_train.py 对齐)
 # ==============================
 os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../data/classifier_dataset_hsv"))
-SAVE_DIR = os.path.join(BASE_DIR, "checkpoints")
-MODEL_NAME = "best_swin_soybean.pth"
-CLASS_INDEX_NAME = "class_indices_swin_baseline.json"
+DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../data/classifier_dataset_hsv"))
+SAVE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../result/checkpoints"))
+MODEL_NAME = "best_swin_aligned.pth"
+CLASS_INDEX_NAME = "class_indices_swin_aligned.json"
 
-# 统一使用 TIMM 的 Swin_V1_224
 MODEL_ID = "swin_base_patch4_window7_224.ms_in22k_ft_in1k"
 IMAGE_SIZE = 224
 BATCH_SIZE = 32
@@ -38,7 +37,7 @@ NUM_EPOCHS = 30
 NUM_WORKERS = 4
 
 LR_BACKBONE = 1e-5
-LR_NEW = 3e-4  # 基线版的 new-parts 仅包含分类 head
+LR_HEAD = 3e-4
 WEIGHT_DECAY = 0.05
 LABEL_SMOOTHING = 0.05
 WARMUP_EPOCHS = 5
@@ -49,13 +48,15 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 USE_AMP = DEVICE.type == "cuda"
 
 def set_seed(seed=42):
-    random.seed(seed); np.random.seed(seed)
-    torch.manual_seed(seed); torch.cuda.manual_seed_all(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
 # ==============================================================================
-# 1. 训练管道 (无任何结构魔改)
+# 1. 数据加载
 # ==============================================================================
 def build_dataloaders():
     tf_train = transforms.Compose([
@@ -91,72 +92,99 @@ def build_dataloaders():
     }
     return train_ds, loaders
 
+# ==============================================================================
+# 2. 模型与优化器
+# ==============================================================================
+def get_model(num_classes):
+    print("构建纯 Swin aligned baseline...")
+    return timm.create_model(MODEL_ID, pretrained=True, num_classes=num_classes)
+
 def get_fast_keywords():
     return ['head.']
 
+def build_optimizer(model):
+    fast_keys = get_fast_keywords()
+    p_backbone = [p for n, p in model.named_parameters() if not any(k in n for k in fast_keys)]
+    p_head = [p for n, p in model.named_parameters() if any(k in n for k in fast_keys)]
+    return optim.AdamW(
+        [{'params': p_backbone, 'lr': LR_BACKBONE}, {'params': p_head, 'lr': LR_HEAD}],
+        weight_decay=WEIGHT_DECAY,
+    )
+
 def build_scheduler(optimizer):
     def lr_bb(epoch):
-        if epoch < FREEZE_EPOCHS: return 0.0
+        if epoch < FREEZE_EPOCHS:
+            return 0.0
         adj = epoch - FREEZE_EPOCHS
-        if adj < WARMUP_EPOCHS: return max(0.05, adj / max(1, WARMUP_EPOCHS))
+        if adj < WARMUP_EPOCHS:
+            return max(0.05, adj / max(1, WARMUP_EPOCHS))
         prog = (adj - WARMUP_EPOCHS) / max(1, NUM_EPOCHS - FREEZE_EPOCHS - WARMUP_EPOCHS)
         return 0.5 * (1.0 + math.cos(math.pi * prog))
 
-    def lr_new(epoch):
-        if epoch < WARMUP_EPOCHS: return max(0.05, epoch / max(1, WARMUP_EPOCHS))
+    def lr_head(epoch):
+        if epoch < WARMUP_EPOCHS:
+            return max(0.05, epoch / max(1, WARMUP_EPOCHS))
         prog = (epoch - WARMUP_EPOCHS) / max(1, NUM_EPOCHS - WARMUP_EPOCHS)
         return 0.5 * (1.0 + math.cos(math.pi * prog))
 
-    return optim.lr_scheduler.LambdaLR(optimizer, [lr_bb, lr_new])
+    return optim.lr_scheduler.LambdaLR(optimizer, [lr_bb, lr_head])
 
-def main():
-    set_seed(SEED); os.makedirs(SAVE_DIR, exist_ok=True)
-    train_ds, loaders = build_dataloaders()
-    num_classes = len(train_ds.classes)
-
-    print("加载 Swin baseline 模型...")
-    model = timm.create_model(MODEL_ID, pretrained=True, num_classes=num_classes).to(DEVICE)
-
+def build_criterion(train_ds, num_classes):
     counts = np.bincount(train_ds.targets, minlength=num_classes)
     class_weights = 1.0 / np.sqrt(counts + 1e-6)
     class_weights = class_weights / class_weights.mean()
-    criterion = nn.CrossEntropyLoss(
+    return nn.CrossEntropyLoss(
         weight=torch.tensor(class_weights, dtype=torch.float32).to(DEVICE),
         label_smoothing=LABEL_SMOOTHING,
     )
 
-    fast_keys = get_fast_keywords()
-    p_backbone = [p for n, p in model.named_parameters() if not any(k in n for k in fast_keys)]
-    p_new = [p for n, p in model.named_parameters() if any(k in n for k in fast_keys)]
-    optimizer = optim.AdamW(
-        [{'params': p_backbone, 'lr': LR_BACKBONE}, {'params': p_new, 'lr': LR_NEW}],
-        weight_decay=WEIGHT_DECAY,
-    )
+# ==============================================================================
+# 3. 训练主流程
+# ==============================================================================
+def main():
+    set_seed(SEED)
+    gc.collect()
+    if DEVICE.type == "cuda":
+        torch.cuda.empty_cache()
+    os.makedirs(SAVE_DIR, exist_ok=True)
 
+    train_ds, loaders = build_dataloaders()
+    num_classes = len(train_ds.classes)
+
+    model = get_model(num_classes).to(DEVICE)
+    criterion = build_criterion(train_ds, num_classes)
+    optimizer = build_optimizer(model)
     scheduler = build_scheduler(optimizer)
     scaler = torch.amp.GradScaler('cuda', enabled=USE_AMP)
 
+    fast_keys = get_fast_keywords()
     best_f1 = -1.0
+
+    print(f"Device: {DEVICE} | AMP: {USE_AMP}")
+    print(f"Classes: {num_classes} | Train: {len(train_ds)} | Val: {len(loaders['val'].dataset)}")
+
     for epoch in range(NUM_EPOCHS):
         is_freeze = epoch < FREEZE_EPOCHS
-        print(f"\nEpoch [{epoch+1}/{NUM_EPOCHS}]")
+        print(f"\nEpoch [{epoch + 1}/{NUM_EPOCHS}]")
 
-        # Baseline 版同样采用物理冻结 3 轮预热策略。
         if is_freeze and epoch == 0:
-            print("开启物理冻结 (仅预热分类头)...")
-            for n, p in model.named_parameters():
-                if not any(k in n for k in fast_keys): p.requires_grad = False
+            print("开启物理冻结，仅训练分类头...")
+            for name, param in model.named_parameters():
+                if not any(k in name for k in fast_keys):
+                    param.requires_grad = False
         elif epoch == FREEZE_EPOCHS:
-            print("解冻 Backbone...")
-            for p in model.parameters(): p.requires_grad = True
+            print("解冻 Backbone，开始联合微调...")
+            for param in model.parameters():
+                param.requires_grad = True
 
         for phase in ['train', 'val']:
             is_train = phase == 'train'
             if is_train:
                 if is_freeze:
                     model.eval()
-                    for n, m in model.named_modules():
-                        if any(k in n for k in fast_keys): m.train()
+                    for name, module in model.named_modules():
+                        if any(k in name for k in fast_keys):
+                            module.train()
                 else:
                     model.train()
             else:
@@ -167,8 +195,11 @@ def main():
             pbar = tqdm(loaders[phase], desc=phase.capitalize(), leave=False)
 
             for inputs, labels in pbar:
-                inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
-                optimizer.zero_grad(set_to_none=True)
+                inputs = inputs.to(DEVICE, non_blocking=True)
+                labels = labels.to(DEVICE, non_blocking=True)
+
+                if is_train:
+                    optimizer.zero_grad(set_to_none=True)
 
                 with torch.set_grad_enabled(is_train):
                     with torch.amp.autocast('cuda', enabled=USE_AMP):
@@ -184,8 +215,8 @@ def main():
                         scaler.update()
 
                 running_loss += loss.item() * inputs.size(0)
-                preds_all.extend(torch.argmax(outputs, 1).cpu().numpy())
-                labels_all.extend(labels.cpu().numpy())
+                preds_all.extend(torch.argmax(outputs, 1).detach().cpu().numpy())
+                labels_all.extend(labels.detach().cpu().numpy())
                 pbar.set_postfix({'loss': f"{loss.item():.4f}"})
 
             if is_train:

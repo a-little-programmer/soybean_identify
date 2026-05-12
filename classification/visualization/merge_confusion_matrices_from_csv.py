@@ -16,15 +16,16 @@ plt.rcParams["svg.fonttype"] = "none"
 # CSV 可以是 confusion_matrix_*_counts.csv，也可以是 predictions.csv。
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+EVALUATE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../evaluate"))
 
 CSV_ITEMS = [
-    # ("RegNet", os.path.join(BASE_DIR, "evaluate_per_class", "confusion_matrix_regnet_counts.csv")),
-    # ("ResNet50", os.path.join(BASE_DIR, "evaluate_per_class", "confusion_matrix_resnet50_counts.csv")),
-    # ("ViT", os.path.join(BASE_DIR, "evaluate_per_class", "confusion_matrix_vit_counts.csv")),
-    # ("Swin", os.path.join(BASE_DIR, "evaluate_per_class", "confusion_matrix_swin_counts.csv")),
-    ("Swin Diff", os.path.join(BASE_DIR, "evaluate_swin_diff", "confusion_matrix_swin_diff_counts.csv")),
-    ("Swin DCA", os.path.join(BASE_DIR, "evaluate_swin_dca", "confusion_matrix_swin_dca_only_counts.csv")),
-    ("Swin Diff DCA", os.path.join(BASE_DIR, "evaluate_swin_diff_dca", "confusion_matrix_swin_diff_dca_counts.csv")),
+    # ("RegNet", os.path.join(EVALUATE_DIR, "evaluate_per_class", "confusion_matrix_regnet_counts.csv")),
+    # ("ResNet50", os.path.join(EVALUATE_DIR, "evaluate_per_class", "confusion_matrix_resnet50_counts.csv")),
+    # ("ViT", os.path.join(EVALUATE_DIR, "evaluate_per_class", "confusion_matrix_vit_counts.csv")),
+    # ("Swin", os.path.join(EVALUATE_DIR, "evaluate_per_class", "confusion_matrix_swin_counts.csv")),
+    ("Swin Diff", os.path.join(EVALUATE_DIR, "evaluate_swin_diff", "confusion_matrix_swin_diff_counts.csv")),
+    ("Swin DCA", os.path.join(EVALUATE_DIR, "evaluate_swin_dca", "confusion_matrix_swin_dca_only_counts.csv")),
+    ("Swin Diff DCA", os.path.join(EVALUATE_DIR, "evaluate_swin_diff_dca", "confusion_matrix_swin_diff_dca_counts.csv")),
 ]
 
 PANEL_LABELS = {

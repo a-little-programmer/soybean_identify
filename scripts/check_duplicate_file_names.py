@@ -1,5 +1,10 @@
 import os
+import sys
 from collections import defaultdict
+
+DETECTION_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../detection_yolo"))
+if DETECTION_DIR not in sys.path:
+    sys.path.insert(0, DETECTION_DIR)
 
 from common import *
 

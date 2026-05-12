@@ -18,9 +18,9 @@ from sklearn.metrics import f1_score
 # ================= 配置区域 =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../data/classifier_dataset_hsv"))
-SAVE_DIR = os.path.join(BASE_DIR, "checkpoints")
-MODEL_NAME = "best_resnet50_soybean.pth"
-CLASS_INDEX_NAME = "class_indices_resnet50.json"
+SAVE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../result/checkpoints"))
+MODEL_NAME = "best_regnet_soybean.pth"
+CLASS_INDEX_NAME = "class_indices_regnet.json"
 
 # 超参数
 IMAGE_SIZE = 224
@@ -46,6 +46,14 @@ def set_seed(seed=42):
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+def get_regnet_model(num_classes):
+    print("正在加载 RegNetY_3_2GF ...")
+    weights = models.RegNet_Y_3_2GF_Weights.IMAGENET1K_V2
+    model = models.regnet_y_3_2gf(weights=weights)
+    in_features = model.fc.in_features
+    model.fc = nn.Linear(in_features, num_classes)
+    return model
 
 def build_scheduler(optimizer):
     def lr_bb(epoch):
@@ -82,10 +90,9 @@ def main():
     if not os.path.exists(SAVE_DIR):
         os.makedirs(SAVE_DIR)
 
-    print(f"设备: {DEVICE} | 启用 AMP 混合精度: {USE_AMP}")
-    print(f"数据集根目录: {DATA_DIR}")
+    print(f"设备: {DEVICE} | 启用 AMP: {USE_AMP}")
+    print(f"数据集: {DATA_DIR}")
 
-    # 1. 定义数据增强
     data_transforms = {
         'train': transforms.Compose([
             transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
@@ -102,12 +109,12 @@ def main():
         ]),
     }
 
-    # 2. 加载文件夹
+    # 1. 加载文件夹
     train_dir = os.path.join(DATA_DIR, 'train')
     val_dir = os.path.join(DATA_DIR, 'val')
 
     if not os.path.exists(train_dir) or not os.path.exists(val_dir):
-        print(f"错误: 找不到 {train_dir} 或 {val_dir}。")
+        print("错误: 找不到 train 或 val 目录。")
         return
 
     image_datasets = {
@@ -117,10 +124,12 @@ def main():
 
     class_names = image_datasets['train'].classes
     num_classes = len(class_names)
-    print(f"检测到 {num_classes} 个类别")
-    print(f"训练集: {len(image_datasets['train'])} 张 | 验证集: {len(image_datasets['val'])} 张")
+    print(
+        f"检测到 {num_classes} 个类别 | "
+        f"Train: {len(image_datasets['train'])} | Val: {len(image_datasets['val'])}"
+    )
 
-    # 3. 创建 DataLoader
+    # 2. DataLoader
     dataloaders = {
         'train': DataLoader(
             image_datasets['train'],
@@ -138,14 +147,10 @@ def main():
         ),
     }
 
-    # 4. 初始化模型 (ResNet50)
-    print("正在加载 ResNet50 预训练模型...")
-    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, num_classes)
+    # 3. 初始化模型
+    model = get_regnet_model(num_classes)
     model = model.to(DEVICE)
 
-    # 5. 定义损失函数、优化器和调度器
     class_weights = compute_class_weights(image_datasets['train'], num_classes)
     criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=LABEL_SMOOTHING)
     fast_keys = get_fast_keywords()
@@ -160,7 +165,7 @@ def main():
 
     scaler = torch.amp.GradScaler('cuda', enabled=USE_AMP)
 
-    # 6. 训练循环
+    # 4. 训练循环
     since = time.time()
     best_f1 = -1.0
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -225,6 +230,10 @@ def main():
                 labels_all.extend(labels.detach().cpu().numpy().tolist())
                 pbar.set_postfix({'loss': f"{loss.item():.4f}"})
 
+            # 调度器在 epoch 结束后统一更新。
+            # if phase == 'train':
+            #     scheduler.step()
+
             epoch_loss = running_loss / len(image_datasets[phase])
             epoch_acc = running_corrects.double() / len(image_datasets[phase])
             epoch_f1 = 100.0 * f1_score(
@@ -245,7 +254,7 @@ def main():
                 best_model_wts = copy.deepcopy(model.state_dict())
                 save_path = os.path.join(SAVE_DIR, MODEL_NAME)
                 torch.save(best_model_wts, save_path)
-                print(f"保存当前最佳 ResNet50 模型: {save_path}")
+                print(f"保存当前最佳 RegNet 模型: {save_path}")
 
         scheduler.step()
 
@@ -254,10 +263,10 @@ def main():
     print(f'最佳验证 Macro-F1: {best_f1:.2f}%')
 
     # 保存索引
-    class_idx_path = os.path.join(SAVE_DIR, CLASS_INDEX_NAME)
-    with open(class_idx_path, "w", encoding='utf-8') as f:
+    idx_path = os.path.join(SAVE_DIR, CLASS_INDEX_NAME)
+    with open(idx_path, "w", encoding='utf-8') as f:
         json.dump(image_datasets['train'].class_to_idx, f, ensure_ascii=False, indent=2)
-    print(f"类别索引映射已保存至: {class_idx_path}")
+    print(f"类别索引映射已保存至: {idx_path}")
 
 if __name__ == '__main__':
     main()

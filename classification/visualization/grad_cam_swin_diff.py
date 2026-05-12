@@ -17,7 +17,9 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 # ==============================================================================
 # 0. 配置区域 
 # ==============================================================================
-WEIGHT_PATH = "checkpoints/best_swin_diff.pth"    
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CHECKPOINT_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../result/checkpoints"))
+WEIGHT_PATH = os.path.join(CHECKPOINT_DIR, "best_swin_diff.pth")
 MODEL_ARCH = "swin_base_patch4_window7_224.ms_in22k_ft_in1k" 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

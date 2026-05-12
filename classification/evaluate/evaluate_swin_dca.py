@@ -19,7 +19,8 @@ from evaluate_report_utils import (
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../data/classifier_dataset_hsv/test"))       
-WEIGHT_PATH = os.path.join(BASE_DIR, "checkpoints", "best_swin_dca_only.pth")    # 指向 DCA 消融实验的权重
+CHECKPOINT_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../result/checkpoints"))
+WEIGHT_PATH = os.path.join(CHECKPOINT_DIR, "best_swin_dca_only.pth")    # 指向 DCA 消融实验的权重
 EVAL_NAME = os.path.splitext(os.path.basename(__file__))[0]
 OUTPUT_DIR = os.path.join(BASE_DIR, EVAL_NAME)
 MODEL_ARCH = "swin_base_patch4_window7_224.ms_in22k_ft_in1k" 

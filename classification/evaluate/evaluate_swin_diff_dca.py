@@ -29,8 +29,9 @@ os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../data/classifier_dataset_hsv/test")) 
-WEIGHT_PATH = os.path.join(BASE_DIR, "checkpoints", "best_swin_diff_dca_aligned.pth")
-CLASS_INDEX_PATH = os.path.join(BASE_DIR, "checkpoints", "class_indices_swin_diff_dca.json")
+CHECKPOINT_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../result/checkpoints"))
+WEIGHT_PATH = os.path.join(CHECKPOINT_DIR, "best_swin_diff_dca_aligned.pth")
+CLASS_INDEX_PATH = os.path.join(CHECKPOINT_DIR, "class_indices_swin_diff_dca.json")
 EVAL_NAME = os.path.splitext(os.path.basename(__file__))[0]
 OUTPUT_DIR = os.path.join(BASE_DIR, EVAL_NAME)
 

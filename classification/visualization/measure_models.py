@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
 import csv
 import os
+import sys
 import time
 
 import torch
 import torch.nn as nn
 from torchvision import models
 import timm
+
+EVALUATE_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../evaluate"))
+if EVALUATE_DIR not in sys.path:
+    sys.path.insert(0, EVALUATE_DIR)
 
 from evaluate_swin_diff import inject_only_diff
 from evaluate_swin_dca import inject_dynamic_residual_routing

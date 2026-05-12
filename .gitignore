@@ -33,3 +33,4 @@ datasets/
 # Keep lightweight class mapping files under resnet/checkpoints tracked.
 !resnet/checkpoints/
 !resnet/checkpoints/*.json
+AGENTS.md

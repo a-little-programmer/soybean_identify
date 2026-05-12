@@ -1,4 +1,5 @@
 import os
+import sys
 import cv2
 import json
 import torch
@@ -7,6 +8,12 @@ import numpy as np
 from torchvision import models, transforms
 from PIL import Image
 import timm
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+EVALUATE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../evaluate"))
+CHECKPOINT_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../result/checkpoints"))
+if EVALUATE_DIR not in sys.path:
+    sys.path.insert(0, EVALUATE_DIR)
 
 from evaluate_swin_dca import (
     inject_dynamic_residual_routing,
@@ -34,16 +41,16 @@ IMAGE_DIR = "/nfs/spy/soybean_detect/data/classifier_dataset_hsv/train"
 
 # 4. 权重与类别索引路径 (请确保您的权重文件名对应如下格式，如果不一致请手动修改)
 CHECKPOINT_PATHS = {
-    "resnet50": "checkpoints/best_resnet50_soybean.pth",
-    "regnet": "checkpoints/best_regnet_soybean.pth",
-    "swin": "checkpoints/best_swin_soybean.pth",
-    "vit": "checkpoints/best_vit_soybean.pth",
-    "swin_aligned": "checkpoints/best_swin_aligned.pth",
-    "swin_diff": "checkpoints/best_swin_diff.pth",
-    "swin_dca_only": "checkpoints/best_swin_dca_only.pth",
-    "swin_diff_dca": "checkpoints/best_swin_diff_dca_aligned.pth",
+    "resnet50": os.path.join(CHECKPOINT_DIR, "best_resnet50_soybean.pth"),
+    "regnet": os.path.join(CHECKPOINT_DIR, "best_regnet_soybean.pth"),
+    "swin": os.path.join(CHECKPOINT_DIR, "best_swin_soybean.pth"),
+    "vit": os.path.join(CHECKPOINT_DIR, "best_vit_soybean.pth"),
+    "swin_aligned": os.path.join(CHECKPOINT_DIR, "best_swin_aligned.pth"),
+    "swin_diff": os.path.join(CHECKPOINT_DIR, "best_swin_diff.pth"),
+    "swin_dca_only": os.path.join(CHECKPOINT_DIR, "best_swin_dca_only.pth"),
+    "swin_diff_dca": os.path.join(CHECKPOINT_DIR, "best_swin_diff_dca_aligned.pth"),
 }
-CLASS_IDX_PATH = "checkpoints/class_indices_regnet.json"
+CLASS_IDX_PATH = os.path.join(CHECKPOINT_DIR, "class_indices_regnet.json")
 
 TIMM_SWIN_ID = "swin_base_patch4_window7_224.ms_in22k_ft_in1k"
 

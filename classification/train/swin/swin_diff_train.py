@@ -27,10 +27,10 @@ warnings.filterwarnings("ignore")
 # ==============================
 os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../data/classifier_dataset_hsv"))
-SAVE_DIR = os.path.join(BASE_DIR, "checkpoints")
-MODEL_NAME = "best_swin_diff_dca_aligned.pth"
-CLASS_INDEX_NAME = "class_indices_swin_diff_dca.json"
+DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../data/classifier_dataset_hsv"))
+SAVE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../result/checkpoints"))
+MODEL_NAME = "best_swin_diff.pth"
+CLASS_INDEX_NAME = "class_indices_swin_diff.json"
 
 MODEL_ID = "swin_base_patch4_window7_224.ms_in22k_ft_in1k"
 IMAGE_SIZE = 224
@@ -49,7 +49,6 @@ TARGET_STAGE_DIMS = (1024,)
 LITE_RATIO = 0.25
 INIT_LAMBDA = -2.0
 INIT_DIFF_GAMMA = 0.02
-INIT_DCA_GAMMA = 0.0
 SEED = 42
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 USE_AMP = DEVICE.type == "cuda"
@@ -61,7 +60,7 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
 # ==============================================================================
-# 1. 核心架构逻辑 (Diff Attention & Dynamic Channel Routing)
+# 1. 核心架构逻辑 (仅 Diff Attention)
 # ==============================================================================
 class DifferentialWindowAttention(nn.Module):
     def __init__(
@@ -153,61 +152,8 @@ class DifferentialWindowAttention(nn.Module):
 
         return self.proj_drop(self.proj(x_out))
 
-class ChannelGating(nn.Module):
-    def __init__(self, dim, num_anchors):
-        super().__init__()
-        self.fc = nn.Sequential(
-            nn.Linear(dim, max(32, dim // 4)),
-            nn.GELU(),
-            nn.Linear(max(32, dim // 4), num_anchors * dim),
-        )
-        nn.init.zeros_(self.fc[-1].weight)
-        nn.init.zeros_(self.fc[-1].bias)
-        self.num_anchors = num_anchors
-
-    def forward(self, x):
-        B, C = x.shape[0], x.shape[-1]
-        x_pooled = x.reshape(B, -1, C).mean(dim=1)
-        gates = torch.softmax(self.fc(x_pooled).reshape(B, self.num_anchors, C), dim=1)
-        broadcast_shape = [B, self.num_anchors] + [1] * (x.dim() - 2) + [C]
-        return gates.reshape(*broadcast_shape)
-
-class DCAWrapper(nn.Module):
-    def __init__(self, orig_stage, anchor_idx=(1, 4, 9), target_idx=(11, 14, 17), dim=512):
-        super().__init__()
-        self.orig_stage, self.anchor_idx, self.target_idx = orig_stage, anchor_idx, target_idx
-        self.routers = nn.ModuleDict({str(i): ChannelGating(dim, len(anchor_idx)) for i in target_idx})
-        self.gammas = nn.ParameterDict({str(i): nn.Parameter(torch.tensor(float(INIT_DCA_GAMMA))) for i in target_idx})
-
-    def forward(self, x):
-        if hasattr(self.orig_stage, 'downsample') and self.orig_stage.downsample is not None:
-            x = self.orig_stage.downsample(x)
-        anchors = []
-        for i, block in enumerate(self.orig_stage.blocks):
-            nx = block(x)
-            if i in self.target_idx:
-                g = self.routers[str(i)](nx)
-                feat = 0
-                for j in range(len(anchors)):
-                    feat = feat + g[:, j] * anchors[j]
-                gamma = self.gammas[str(i)]
-                nx = nx + gamma * feat
-            x = nx
-            if i in self.anchor_idx:
-                anchors.append(x)
-        return x
-
-def inject_all(model):
-    print("实例级注入 Diff 与 DCA 模块...")
-    # 1. 仅注入 DCA 到 Stage 3
-    model.layers[2] = DCAWrapper(
-        model.layers[2],
-        anchor_idx=(1, 4, 9),
-        target_idx=(11, 14, 17),
-        dim=512,
-    )
-
-    # 2. 仅注入 Diff 到 Stage 4 (无需浪费性能替换前置 Stage)
+def inject_only_diff(model):
+    print("实例级注入 Diff 模块到 Stage 4...")
     layer = model.layers[3]
     for block in layer.blocks:
         old = block.attn
@@ -223,7 +169,7 @@ def inject_all(model):
     return model
 
 # ==============================================================================
-# 2. 数据加载与训练工具
+# 2. 训练管道 (严格对齐版)
 # ==============================================================================
 def build_dataloaders():
     tf_train = transforms.Compose([
@@ -260,7 +206,7 @@ def build_dataloaders():
     return train_ds, loaders
 
 def get_fast_keywords():
-    return ['q_lite', 'k_lite', 'v_lite', 'diff', 'lambda', 'routers.', 'gammas.', 'head.']
+    return ['q_lite', 'k_lite', 'v_lite', 'lambda_', 'diff_proj', 'diff_gamma', 'head.']
 
 def build_scheduler(optimizer):
     def lr_bb(epoch):
@@ -282,7 +228,7 @@ def main():
     train_ds, loaders = build_dataloaders()
     num_classes = len(train_ds.classes)
 
-    model = inject_all(timm.create_model(MODEL_ID, pretrained=True, num_classes=num_classes)).to(DEVICE)
+    model = inject_only_diff(timm.create_model(MODEL_ID, pretrained=True, num_classes=num_classes)).to(DEVICE)
 
     counts = np.bincount(train_ds.targets, minlength=num_classes)
     class_weights = 1.0 / np.sqrt(counts + 1e-6)
@@ -311,12 +257,10 @@ def main():
         if is_freeze and epoch == 0:
             print("开启物理冻结...")
             for n, p in model.named_parameters():
-                if not any(k in n for k in fast_keys):
-                    p.requires_grad = False
+                if not any(k in n for k in fast_keys): p.requires_grad = False
         elif epoch == FREEZE_EPOCHS:
             print("解冻 Backbone...")
-            for p in model.parameters():
-                p.requires_grad = True
+            for p in model.parameters(): p.requires_grad = True
 
         for phase in ['train', 'val']:
             is_train = phase == 'train'
@@ -324,8 +268,7 @@ def main():
                 if is_freeze:
                     model.eval()
                     for n, m in model.named_modules():
-                        if any(k in n for k in fast_keys):
-                            m.train()
+                        if any(k in n for k in fast_keys): m.train()
                 else:
                     model.train()
             else:
@@ -347,7 +290,6 @@ def main():
                     if is_train:
                         scaler.scale(loss).backward()
                         scaler.unscale_(optimizer)
-                        # 只裁剪活跃梯度的范数，防止冻结参数污染
                         active_params = [p for p in model.parameters() if p.requires_grad]
                         torch.nn.utils.clip_grad_norm_(active_params, max_norm=5.0)
                         scaler.step(optimizer)
