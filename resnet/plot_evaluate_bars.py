@@ -20,9 +20,12 @@ OUTPUT_IMAGE_NAME = "summary_metrics_bar.png"
 #        Weighted Precision、Weighted Recall、Weighted-F1
 METRICS_TO_PLOT = ["Accuracy", "Macro-F1", "Weighted-F1"]
 
-# None 表示自动计算。论文图需要放大差异时，可改成 70、100 这类固定范围。
+# None 表示自动计算。默认开启放大差异，Y 轴不会从 0 开始。
 Y_AXIS_MIN = None
 Y_AXIS_MAX = 100
+ZOOM_SMALL_GAINS = True
+ZOOM_PADDING = 1.0
+MIN_Y_RANGE = 3.0
 
 REPORT_METRIC_KEYS = {
     "Accuracy": "Accuracy (%)",
@@ -144,8 +147,10 @@ def plot_summary_grouped_bars(records):
 
     colors = ["#4C78A8", "#F58518", "#54A24B"]
     max_score = 0.0
+    all_values = []
     for i, (report_key, label) in enumerate(available_metrics):
         values = [record["summary"].get(report_key, 0.0) for record in records]
+        all_values.extend(values)
         max_score = max(max_score, max(values) if values else 0.0)
         rects = ax.bar(
             x + offsets[i],
@@ -163,8 +168,20 @@ def plot_summary_grouped_bars(records):
     ax.set_xlabel("Model", fontweight="bold")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=25, ha="right")
-    y_min = Y_AXIS_MIN if Y_AXIS_MIN is not None else 0
-    y_max = Y_AXIS_MAX if Y_AXIS_MAX is not None else min(100, max(10, max_score + 8))
+    if ZOOM_SMALL_GAINS and all_values:
+        min_score = min(all_values)
+        value_range = max(max_score - min_score, MIN_Y_RANGE)
+        y_min_auto = max(0, min_score - ZOOM_PADDING)
+        y_max_auto = min(100, y_min_auto + value_range + ZOOM_PADDING * 2)
+        if y_max_auto <= max_score:
+            y_max_auto = min(100, max_score + ZOOM_PADDING)
+            y_min_auto = max(0, y_max_auto - value_range - ZOOM_PADDING * 2)
+    else:
+        y_min_auto = 0
+        y_max_auto = min(100, max(10, max_score + 8))
+
+    y_min = Y_AXIS_MIN if Y_AXIS_MIN is not None else y_min_auto
+    y_max = Y_AXIS_MAX if Y_AXIS_MAX is not None else y_max_auto
     ax.set_ylim(y_min, y_max)
     ax.grid(axis="y", linestyle="--", alpha=0.45, zorder=0)
     ax.legend(loc="upper left", fontsize=9)
