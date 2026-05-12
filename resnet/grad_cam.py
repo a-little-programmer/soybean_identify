@@ -6,6 +6,17 @@ import torch.nn as nn
 import numpy as np
 from torchvision import models, transforms
 from PIL import Image
+import timm
+
+from evaluate_swin_dca import (
+    inject_dynamic_residual_routing,
+    normalize_dca_checkpoint_for_model as normalize_dca_checkpoint,
+)
+from evaluate_swin_diff import inject_only_diff
+from evaluate_swin_diff_dca import (
+    get_model as get_swin_diff_dca_model,
+    normalize_dca_checkpoint_for_model as normalize_diff_dca_checkpoint,
+)
 
 # 导入 Grad-CAM 相关的包
 from pytorch_grad_cam import GradCAM
@@ -14,10 +25,11 @@ from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
 # ================= 🌟 核心配置区域 =================
 # 1. 想测哪个模型？就在这里改！
-# 可选值: 'resnet50', 'regnet', 'swin', 'vit'
-MODEL_TYPE = {"resnet50", "regnet", "swin", "vit"}
+# 可选值: 'resnet50', 'regnet', 'swin', 'vit',
+#        'swin_aligned', 'swin_diff', 'swin_dca_only', 'swin_diff_dca'
+MODEL_TYPE = {"swin_diff", "swin_dca_only", "swin_diff_dca"}
 # 2. 待测试的【大文件夹】路径 (程序会自动遍历里面所有的小文件夹)
-IMAGE_DIR = "/nfs/spy/soybean_detect/data/classifier_dataset_hsv/train/all"
+IMAGE_DIR = "/nfs/spy/soybean_detect/data/classifier_dataset_hsv/train"
 
 
 # 4. 权重与类别索引路径 (请确保您的权重文件名对应如下格式，如果不一致请手动修改)
@@ -26,12 +38,29 @@ CHECKPOINT_PATHS = {
     "regnet": "checkpoints/best_regnet_soybean.pth",
     "swin": "checkpoints/best_swin_soybean.pth",
     "vit": "checkpoints/best_vit_soybean.pth",
+    "swin_aligned": "checkpoints/best_swin_aligned.pth",
+    "swin_diff": "checkpoints/best_swin_diff.pth",
+    "swin_dca_only": "checkpoints/best_swin_dca_only.pth",
+    "swin_diff_dca": "checkpoints/best_swin_diff_dca_aligned.pth",
 }
-CLASS_IDX_PATH = "checkpoints/class_indices.json"
+CLASS_IDX_PATH = "checkpoints/class_indices_regnet.json"
+
+TIMM_SWIN_ID = "swin_base_patch4_window7_224.ms_in22k_ft_in1k"
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # =================================================
 
+def load_checkpoint(model, model_path, normalize_fn=None):
+    checkpoint = torch.load(model_path, map_location=DEVICE)
+    if list(checkpoint.keys())[0].startswith("module."):
+        checkpoint = {k.replace("module.", ""): v for k, v in checkpoint.items()}
+    if normalize_fn is not None:
+        checkpoint = normalize_fn(checkpoint, model)
+    model.load_state_dict(checkpoint, strict=True)
+
+def reshape_transform_swin(tensor):
+    # timm Swin 输出是 channels-last: [B, H, W, C]，Grad-CAM 需要 [B, C, H, W]。
+    return tensor.permute(0, 3, 1, 2)
 
 def setup_model_and_cam(modeltype, num_classes):
     """根据选择的模型类型，动态初始化网络架构和 Grad-CAM 目标层"""
@@ -42,7 +71,7 @@ def setup_model_and_cam(modeltype, num_classes):
     if modeltype == "resnet50":
         model = models.resnet50(weights=None)
         model.fc = nn.Linear(model.fc.in_features, num_classes)
-        model.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        load_checkpoint(model, model_path)
         # ResNet: 追踪最后一个卷积层的输出
         target_layers = [model.layer4[-1]]
 
@@ -50,28 +79,46 @@ def setup_model_and_cam(modeltype, num_classes):
         # 假设您用的是 regnet_y_3_2gf
         model = models.regnet_y_3_2gf(weights=None)
         model.fc = nn.Linear(model.fc.in_features, num_classes)
-        model.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        load_checkpoint(model, model_path)
         # RegNet: 追踪主干网络的最后一个 Block
         target_layers = [model.trunk_output[-1]]
 
     elif modeltype == "swin":
-        # 假设您用的是 swin_v2_b
-        model = models.swin_v2_b(weights=None)
-        model.head = nn.Linear(model.head.in_features, num_classes)
-        model.load_state_dict(torch.load(model_path, map_location=DEVICE))
-        # Swin: 追踪最后一个 Stage 的最后一个 Block
-        target_layers = [model.features[-1][-1].norm2]
+        model = timm.create_model(TIMM_SWIN_ID, pretrained=False, num_classes=num_classes)
+        load_checkpoint(model, model_path)
+        target_layers = [model.layers[-1].blocks[-1].norm1]
+        reshape_transform = reshape_transform_swin
 
-        # Swin 专属特征重塑：Swin 输出的是 [Batch, H, W, Channels]，而 CAM 需要 [Batch, Channels, H, W]
-        def reshape_transform_swin(tensor):
-            return tensor.permute(0, 3, 1, 2)
+    elif modeltype == "swin_aligned":
+        model = timm.create_model(TIMM_SWIN_ID, pretrained=False, num_classes=num_classes)
+        load_checkpoint(model, model_path)
+        target_layers = [model.layers[-1].blocks[-1].norm1]
+        reshape_transform = reshape_transform_swin
 
+    elif modeltype == "swin_diff":
+        model = timm.create_model(TIMM_SWIN_ID, pretrained=False, num_classes=num_classes)
+        model = inject_only_diff(model)
+        load_checkpoint(model, model_path)
+        target_layers = [model.layers[-1].blocks[-1].norm1]
+        reshape_transform = reshape_transform_swin
+
+    elif modeltype == "swin_dca_only":
+        model = timm.create_model(TIMM_SWIN_ID, pretrained=False, num_classes=num_classes)
+        model = inject_dynamic_residual_routing(model)
+        load_checkpoint(model, model_path, normalize_fn=normalize_dca_checkpoint)
+        target_layers = [model.layers[-1].blocks[-1].norm1]
+        reshape_transform = reshape_transform_swin
+
+    elif modeltype == "swin_diff_dca":
+        model = get_swin_diff_dca_model(num_classes)
+        load_checkpoint(model, model_path, normalize_fn=normalize_diff_dca_checkpoint)
+        target_layers = [model.layers[-1].blocks[-1].norm1]
         reshape_transform = reshape_transform_swin
 
     elif modeltype == "vit":
         model = models.vit_b_16(weights=None)
         model.heads.head = nn.Linear(model.heads.head.in_features, num_classes)
-        model.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        load_checkpoint(model, model_path)
         target_layers = [model.encoder.layers[-1].ln_1]
 
         # ViT 专属特征重塑：去掉 CLS token，拼成 14x14
@@ -201,6 +248,6 @@ def main(modeltype, outputdir):
 
 
 if __name__ == "__main__":
-    for model in MODEL_TYPE:
+    for model in sorted(MODEL_TYPE):
         outputdir = f"/nfs/spy/soybean_detect/data/gradCamImgT/output_{model}_all" #输出路径
         main(model,outputdir)
