@@ -41,7 +41,14 @@ def save_evaluation_results(
     print(f"💾 report.txt 已保存至: {OUTPUT_DIR}")
 
 def save_confusion_matrices(all_labels, all_preds, class_names):
-    save_confusion_matrix_counts(all_labels, all_preds, class_names, OUTPUT_DIR)
+    save_confusion_matrix_counts(
+        all_labels,
+        all_preds,
+        class_names,
+        OUTPUT_DIR,
+        file_name="confusion_matrix_swin_dca_only_counts.png",
+        model_name="swin_dca_only",
+    )
 
 # ==============================================================================
 # 1. 核心架构：动态残差路由 (必须与训练脚本完全一致，保证加载不报错)

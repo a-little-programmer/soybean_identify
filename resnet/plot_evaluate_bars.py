@@ -20,6 +20,12 @@ OUTPUT_IMAGE_NAME = "summary_metrics_bar.png"
 #        Weighted Precision、Weighted Recall、Weighted-F1
 METRICS_TO_PLOT = ["Accuracy", "Macro-F1", "Weighted-F1"]
 
+# 论文图常用浅色系，顺序对应 METRICS_TO_PLOT。
+color_A = "#87CEEB"  # 浅天蓝
+color_B = "#FA8072"  # 鲑鱼红
+color_C = "#90EE90"  # 淡雅绿
+BAR_COLORS = [color_A, color_B, color_C]
+
 # None 表示自动计算。默认开启放大差异，Y 轴不会从 0 开始。
 Y_AXIS_MIN = None
 Y_AXIS_MAX = 100
@@ -145,7 +151,7 @@ def plot_summary_grouped_bars(records):
     fig_width = max(9, len(labels) * 1.2)
     fig, ax = plt.subplots(figsize=(fig_width, 6), dpi=300)
 
-    colors = ["#4C78A8", "#F58518", "#54A24B"]
+    colors = BAR_COLORS
     max_score = 0.0
     all_values = []
     for i, (report_key, label) in enumerate(available_metrics):

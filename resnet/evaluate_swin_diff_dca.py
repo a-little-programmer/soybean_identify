@@ -59,7 +59,14 @@ def save_evaluation_results(
     print(f"💾 report.txt 已保存至: {OUTPUT_DIR}")
 
 def save_confusion_matrices(all_labels, all_preds, class_names):
-    save_confusion_matrix_counts(all_labels, all_preds, class_names, OUTPUT_DIR)
+    save_confusion_matrix_counts(
+        all_labels,
+        all_preds,
+        class_names,
+        OUTPUT_DIR,
+        file_name="confusion_matrix_swin_diff_dca_counts.png",
+        model_name="swin_diff_dca",
+    )
 
 # ==============================================================================
 # 1. 核心架构：差分注意力 (Diff) -> 必须与训练端 1:1 对齐

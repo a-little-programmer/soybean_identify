@@ -92,15 +92,25 @@ def write_report(report_lines, output_dir, append=False):
     return report_path
 
 
-def save_confusion_matrix_counts(all_labels, all_preds, class_names, output_dir, file_name="confusion_matrix_counts.png"):
+def save_confusion_matrix_counts(
+    all_labels,
+    all_preds,
+    class_names,
+    output_dir,
+    file_name="confusion_matrix_counts.png",
+    model_name=None,
+):
     os.makedirs(output_dir, exist_ok=True)
     labels = list(range(len(class_names)))
     cm = confusion_matrix(all_labels, all_preds, labels=labels)
+    csv_name = file_name.replace(".png", ".csv")
+    np.savetxt(os.path.join(output_dir, csv_name), cm, fmt="%d", delimiter=",")
 
-    fig_size = max(10, len(class_names) * 0.55)
+    fig_size = max(18, len(class_names) * 0.9)
     fig, ax = plt.subplots(figsize=(fig_size, fig_size))
     im = ax.imshow(cm, interpolation="nearest", cmap="Blues")
     ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    title_prefix = f"{model_name} - " if model_name else ""
     ax.set(
         xticks=np.arange(len(class_names)),
         yticks=np.arange(len(class_names)),
@@ -108,8 +118,12 @@ def save_confusion_matrix_counts(all_labels, all_preds, class_names, output_dir,
         yticklabels=class_names,
         ylabel="True Label",
         xlabel="Predicted Label",
-        title="Confusion Matrix (Counts)",
+        title=f"{title_prefix}Confusion Matrix (Counts)",
     )
+    ax.title.set_fontsize(28)
+    ax.xaxis.label.set_fontsize(24)
+    ax.yaxis.label.set_fontsize(24)
+    ax.tick_params(axis="both", labelsize=18)
     plt.setp(ax.get_xticklabels(), rotation=60, ha="right", rotation_mode="anchor")
 
     threshold = cm.max() / 2.0 if cm.size and cm.max() > 0 else 0.5
@@ -123,7 +137,8 @@ def save_confusion_matrix_counts(all_labels, all_preds, class_names, output_dir,
                 ha="center",
                 va="center",
                 color="white" if value > threshold else "black",
-                fontsize=6,
+                fontsize=12,
+                fontweight="bold",
             )
 
     fig.tight_layout()
@@ -138,54 +153,18 @@ def save_multiple_confusion_matrix_counts(items, output_dir, file_name="confusio
         return None
 
     os.makedirs(output_dir, exist_ok=True)
-    num_items = len(items)
-    cols = 2 if num_items > 1 else 1
-    rows = int(np.ceil(num_items / cols))
-    class_count = max(len(item["class_names"]) for item in items)
-    subplot_size = max(8, class_count * 0.38)
-
-    fig, axes = plt.subplots(rows, cols, figsize=(subplot_size * cols, subplot_size * rows))
-    axes = np.atleast_1d(axes).reshape(rows, cols)
-
-    for ax in axes.ravel():
-        ax.axis("off")
-
-    for ax, item in zip(axes.ravel(), items):
-        class_names = item["class_names"]
-        labels = list(range(len(class_names)))
-        cm = confusion_matrix(item["labels"], item["preds"], labels=labels)
-
-        ax.axis("on")
-        im = ax.imshow(cm, interpolation="nearest", cmap="Blues")
-        ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        ax.set(
-            xticks=np.arange(len(class_names)),
-            yticks=np.arange(len(class_names)),
-            xticklabels=class_names,
-            yticklabels=class_names,
-            ylabel="True Label",
-            xlabel="Predicted Label",
-            title=f"{item['model']} Confusion Matrix (Counts)",
+    out_paths = []
+    for item in items:
+        model_name = item["model"]
+        safe_name = model_name.replace("/", "_").replace(" ", "_")
+        out_paths.append(
+            save_confusion_matrix_counts(
+                item["labels"],
+                item["preds"],
+                item["class_names"],
+                output_dir,
+                file_name=f"confusion_matrix_{safe_name}_counts.png",
+                model_name=model_name,
+            )
         )
-        plt.setp(ax.get_xticklabels(), rotation=60, ha="right", rotation_mode="anchor", fontsize=5)
-        plt.setp(ax.get_yticklabels(), fontsize=5)
-
-        threshold = cm.max() / 2.0 if cm.size and cm.max() > 0 else 0.5
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                value = cm[i, j]
-                ax.text(
-                    j,
-                    i,
-                    format(value, "d"),
-                    ha="center",
-                    va="center",
-                    color="white" if value > threshold else "black",
-                    fontsize=3,
-                )
-
-    fig.tight_layout()
-    out_path = os.path.join(output_dir, file_name)
-    fig.savefig(out_path, dpi=300)
-    plt.close(fig)
-    return out_path
+    return out_paths
