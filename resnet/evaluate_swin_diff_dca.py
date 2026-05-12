@@ -44,7 +44,7 @@ TARGET_STAGE_DIMS = (1024,)
 LITE_RATIO = 0.25               
 INIT_LAMBDA = -2.0               
 INIT_DIFF_GAMMA = 0.02
-INIT_DCA_GAMMA = 0.01  
+INIT_DCA_GAMMA = 0.0  
 
 def save_evaluation_results(
     report_lines,
@@ -247,13 +247,12 @@ def inject_stage4_diff_attention(model):
 class ChannelGating(nn.Module):
     def __init__(self, dim, num_anchors):
         super().__init__()
-        hidden_dim = max(32, dim // 4)
         self.fc = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
+            nn.Linear(dim, max(32, dim // 4)),
             nn.GELU(),
-            nn.Linear(hidden_dim, num_anchors * dim),
+            nn.Linear(max(32, dim // 4), num_anchors * dim),
         )
-        trunc_normal_(self.fc[-1].weight, std=1e-4)
+        nn.init.zeros_(self.fc[-1].weight)
         nn.init.zeros_(self.fc[-1].bias)
         self.num_anchors = num_anchors
 
@@ -278,9 +277,6 @@ class DynamicResidualStageWrapper(nn.Module):
         self.routers = nn.ModuleDict({
             str(idx): ChannelGating(dim, len(anchor_indices)) for idx in target_indices
         })
-        self.norms = nn.ModuleDict({
-            str(idx): nn.LayerNorm(dim) for idx in target_indices
-        })
         self.gammas = nn.ParameterDict({
             str(idx): nn.Parameter(torch.tensor(float(INIT_DCA_GAMMA))) for idx in target_indices
         })
@@ -295,14 +291,14 @@ class DynamicResidualStageWrapper(nn.Module):
 
             if i in self.target_indices:
                 router = self.routers[str(i)]
-                gamma = torch.tanh(self.gammas[str(i)])
+                gamma = self.gammas[str(i)]
                 gates = router(next_x)
 
                 routed_feat = torch.zeros_like(next_x)
                 for j, anchor_feat in enumerate(anchors):
                     routed_feat = routed_feat + gates[:, j] * anchor_feat
 
-                next_x = next_x + gamma * self.norms[str(i)](routed_feat)
+                next_x = next_x + gamma * routed_feat
 
             x = next_x
 
@@ -344,9 +340,6 @@ def normalize_dca_checkpoint_for_model(checkpoint, model):
     for key, value in model_state.items():
         if key.startswith("layers.2.gammas.") and key not in normalized:
             normalized[key] = value
-        if key.startswith("layers.2.norms.") and key not in normalized:
-            normalized[key] = value
-
     return normalized
 
 # ==============================================================================

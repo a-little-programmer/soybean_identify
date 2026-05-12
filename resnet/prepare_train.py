@@ -15,6 +15,8 @@ YOLO_LABELS_DIR = "../../data/raw_data/labels"
 
 # 2. 输出路径
 OUTPUT_CLASSIFIER_DIR = "../../data/classifier_dataset_hsv"
+# 保留中间裁剪结果：只按标注框裁出豆粒，不做黑边正方形填充，也不做 HSV 增强。
+OUTPUT_RAW_CROP_DIR = "../../data/classifier_dataset_hsv_raw_crop"
 
 # 3. 类别列表
 CLASS_NAMES = [
@@ -95,7 +97,7 @@ def setup_output_dirs(output_base_dir, class_names):
         for class_name in class_names:
             os.makedirs(os.path.join(output_base_dir, subset, class_name), exist_ok=True)
 
-def process_single_image(image_path, label_path, output_base_dir, class_names, subset):
+def process_single_image(image_path, label_path, output_base_dir, raw_crop_base_dir, class_names, subset):
     """
     处理单张大图：读取 -> 裁剪 -> (增强) -> 保存到对应 subset 文件夹
     """
@@ -131,15 +133,20 @@ def process_single_image(image_path, label_path, output_base_dir, class_names, s
         if crop_img.size == 0: continue
 
         save_dir = os.path.join(subset_dir, shape['label'])
+        raw_save_dir = os.path.join(raw_crop_base_dir, subset, shape['label'])
 
-        # 1. 保存原图
+        # 1. 保存中间裁剪图：未填黑边、未做训练增强
+        raw_save_path = os.path.join(raw_save_dir, f"{basename}_{i}.jpg")
+        cv2.imencode('.jpg', crop_img)[1].tofile(raw_save_path)
+
+        # 2. 保存分类训练图：裁剪后填充黑边为正方形
         # 使用 cv2.imencode 支持中文路径写入
         crop_img_padded = pad_to_square_with_margin(crop_img, margin_ratio=MARGIN_RATIO, pad_color=(0, 0, 0))
         save_path = os.path.join(save_dir, f"{basename}_{i}.jpg")
         cv2.imencode('.jpg', crop_img_padded)[1].tofile(save_path)
         count += 1
 
-        # 2. 训练集增强：先增强裁剪区域，再填充黑边，保持 padding 区域纯黑且分布一致
+        # 3. 训练集增强：先增强裁剪区域，再填充黑边，保持 padding 区域纯黑且分布一致
         if subset == 'train' and ENABLE_AUGMENT:
             for k in range(AUGMENT_PER_IMAGE):
                 aug_img = augment_color(crop_img, AUG_INTENSITY)
@@ -152,6 +159,7 @@ def process_single_image(image_path, label_path, output_base_dir, class_names, s
 def main():
     random.seed(SEED)
     setup_output_dirs(OUTPUT_CLASSIFIER_DIR, CLASS_NAMES)
+    setup_output_dirs(OUTPUT_RAW_CROP_DIR, CLASS_NAMES)
 
     print("开始扫描图片文件...")
 
@@ -198,7 +206,14 @@ def main():
             # 假设 json 文件名和图片名一致
             json_path = os.path.join(YOLO_LABELS_DIR, f"{basename}.json")
 
-            total_crops += process_single_image(img_path, json_path, OUTPUT_CLASSIFIER_DIR, CLASS_NAMES, subset)
+            total_crops += process_single_image(
+                img_path,
+                json_path,
+                OUTPUT_CLASSIFIER_DIR,
+                OUTPUT_RAW_CROP_DIR,
+                CLASS_NAMES,
+                subset
+            )
         print(f"   -> {subset} 集处理完毕，共生成 {total_crops} 张豆子切片")
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ MODEL_ARCH = [
     "swin",
 ]
 
-BATCH_SIZE = 64 
+BATCH_SIZE = 32 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 EVAL_NAME = os.path.splitext(os.path.basename(__file__))[0]

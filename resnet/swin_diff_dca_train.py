@@ -49,7 +49,7 @@ TARGET_STAGE_DIMS = (1024,)
 LITE_RATIO = 0.25
 INIT_LAMBDA = -2.0
 INIT_DIFF_GAMMA = 0.02
-INIT_DCA_GAMMA = 0.01
+INIT_DCA_GAMMA = 0.0
 SEED = 42
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 USE_AMP = DEVICE.type == "cuda"
@@ -156,13 +156,12 @@ class DifferentialWindowAttention(nn.Module):
 class ChannelGating(nn.Module):
     def __init__(self, dim, num_anchors):
         super().__init__()
-        hidden_dim = max(32, dim // 4)
         self.fc = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
+            nn.Linear(dim, max(32, dim // 4)),
             nn.GELU(),
-            nn.Linear(hidden_dim, num_anchors * dim),
+            nn.Linear(max(32, dim // 4), num_anchors * dim),
         )
-        trunc_normal_(self.fc[-1].weight, std=1e-4)
+        nn.init.zeros_(self.fc[-1].weight)
         nn.init.zeros_(self.fc[-1].bias)
         self.num_anchors = num_anchors
 
@@ -178,7 +177,6 @@ class DCAWrapper(nn.Module):
         super().__init__()
         self.orig_stage, self.anchor_idx, self.target_idx = orig_stage, anchor_idx, target_idx
         self.routers = nn.ModuleDict({str(i): ChannelGating(dim, len(anchor_idx)) for i in target_idx})
-        self.norms = nn.ModuleDict({str(i): nn.LayerNorm(dim) for i in target_idx})
         self.gammas = nn.ParameterDict({str(i): nn.Parameter(torch.tensor(float(INIT_DCA_GAMMA))) for i in target_idx})
 
     def forward(self, x):
@@ -192,8 +190,8 @@ class DCAWrapper(nn.Module):
                 feat = 0
                 for j in range(len(anchors)):
                     feat = feat + g[:, j] * anchors[j]
-                gamma = torch.tanh(self.gammas[str(i)])
-                nx = nx + gamma * self.norms[str(i)](feat)
+                gamma = self.gammas[str(i)]
+                nx = nx + gamma * feat
             x = nx
             if i in self.anchor_idx:
                 anchors.append(x)

@@ -24,7 +24,7 @@ EVAL_NAME = os.path.splitext(os.path.basename(__file__))[0]
 OUTPUT_DIR = os.path.join(BASE_DIR, EVAL_NAME)
 MODEL_ARCH = "swin_base_patch4_window7_224.ms_in22k_ft_in1k" 
 
-BATCH_SIZE = 64 
+BATCH_SIZE = 32 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 INIT_DCA_GAMMA = 0.0
 

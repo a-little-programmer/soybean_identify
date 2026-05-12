@@ -168,22 +168,6 @@ def inject_only_diff(model):
         block.attn = new.to(old.qkv.weight.device)
     return model
 
-class BalancedSoftmaxLoss(nn.Module):
-    """长尾分类损失：在 softmax 内注入类别先验，替代外部 class weight。"""
-    def __init__(self, samples_per_class, label_smoothing=0.0):
-        super().__init__()
-        counts = torch.tensor(samples_per_class, dtype=torch.float32)
-        self.register_buffer("log_counts", torch.log(counts + 1e-12))
-        self.label_smoothing = label_smoothing
-
-    def forward(self, logits, targets):
-        adjusted_logits = logits + self.log_counts.to(logits.device)
-        return nn.functional.cross_entropy(
-            adjusted_logits,
-            targets,
-            label_smoothing=self.label_smoothing,
-        )
-
 # ==============================================================================
 # 2. 训练管道 (严格对齐版)
 # ==============================================================================
@@ -247,10 +231,12 @@ def main():
     model = inject_only_diff(timm.create_model(MODEL_ID, pretrained=True, num_classes=num_classes)).to(DEVICE)
 
     counts = np.bincount(train_ds.targets, minlength=num_classes)
-    criterion = BalancedSoftmaxLoss(
-        samples_per_class=counts,
+    class_weights = 1.0 / np.sqrt(counts + 1e-6)
+    class_weights = class_weights / class_weights.mean()
+    criterion = nn.CrossEntropyLoss(
+        weight=torch.tensor(class_weights, dtype=torch.float32).to(DEVICE),
         label_smoothing=LABEL_SMOOTHING,
-    ).to(DEVICE)
+    )
 
     fast_keys = get_fast_keywords()
     p_backbone = [p for n, p in model.named_parameters() if not any(k in n for k in fast_keys)]

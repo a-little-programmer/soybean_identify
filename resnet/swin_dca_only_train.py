@@ -220,15 +220,14 @@ def build_scheduler(optimizer, total_epochs, warmup_epochs=5, freeze_epochs=3):
         if epoch < freeze_epochs:
             return 0.0
         adj_epoch = epoch - freeze_epochs
-        adj_total = total_epochs - freeze_epochs
         if adj_epoch < warmup_epochs:
-            return float(adj_epoch + 1) / float(max(1, warmup_epochs))
-        progress = float(adj_epoch - warmup_epochs) / float(max(1, adj_total - warmup_epochs))
+            return max(0.05, adj_epoch / max(1, warmup_epochs))
+        progress = float(adj_epoch - warmup_epochs) / float(max(1, total_epochs - freeze_epochs - warmup_epochs))
         return 0.5 * (1.0 + math.cos(math.pi * progress))
 
     def lr_lambda_new(epoch):
         if epoch < warmup_epochs:
-            return float(epoch + 1) / float(max(1, warmup_epochs))
+            return max(0.05, epoch / max(1, warmup_epochs))
         progress = float(epoch - warmup_epochs) / float(max(1, total_epochs - warmup_epochs))
         return 0.5 * (1.0 + math.cos(math.pi * progress))
 
@@ -253,9 +252,28 @@ def set_backbone_trainable(model, trainable=True):
         if not any(k in name for k in fast_keywords):
             param.requires_grad = trainable
 
-def run_one_epoch(model, loader, criterion, num_classes, optimizer=None, scaler=None):
+def run_one_epoch(
+    model,
+    loader,
+    criterion,
+    num_classes,
+    optimizer=None,
+    scaler=None,
+    fast_keys=None,
+    is_freeze=False,
+):
     is_train = optimizer is not None
-    model.train() if is_train else model.eval()
+    if is_train:
+        if is_freeze:
+            model.eval()
+            fast_keys = fast_keys or []
+            for name, module in model.named_modules():
+                if any(k in name for k in fast_keys):
+                    module.train()
+        else:
+            model.train()
+    else:
+        model.eval()
 
     running_loss = 0.0
     preds_all = []
@@ -358,6 +376,8 @@ def main():
             num_classes,
             optimizer,
             scaler,
+            fast_keys=get_fast_keywords(),
+            is_freeze=epoch < FREEZE_EPOCHS,
         )
         val_loss, val_acc, val_f1 = run_one_epoch(model, dataloaders['val'], criterion, num_classes, None, None)
 
