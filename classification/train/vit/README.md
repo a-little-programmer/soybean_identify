@@ -6,8 +6,12 @@
 
 - `vit_diff_dca_model.py`: ViT-B/16 上的 Diff Attention 与 DCA 注入逻辑。
 - `vit_train.py`: ViT-B/16 baseline 训练脚本。
+- `vit_diff_train.py`: ViT-B/16 + Diff Attention 消融训练脚本。
+- `vit_dca_train.py`: ViT-B/16 + DCA 消融训练脚本。
 - `vit_diff_dca_train.py`: ViT-Diff-DCA 训练脚本，核心训练参数与 `vit_train.py` 对齐。
-- `../../evaluate/evaluate_vit_diff_dca.py`: 测试集评估脚本，输出 per-class 指标、总体指标和混淆矩阵。
+- `../../evaluate/evaluate_vit_diff.py`: ViT-Diff 测试集评估脚本。
+- `../../evaluate/evaluate_vit_dca.py`: ViT-DCA 测试集评估脚本。
+- `../../evaluate/evaluate_vit_diff_dca.py`: ViT-Diff-DCA 测试集评估脚本。
 
 ## 对齐参数
 
@@ -29,6 +33,10 @@
 
 ```bash
 python classification/train/vit/vit_diff_dca_train.py
+python classification/train/vit/vit_diff_train.py
+python classification/train/vit/vit_dca_train.py
+python classification/evaluate/evaluate_vit_diff.py
+python classification/evaluate/evaluate_vit_dca.py
 python classification/evaluate/evaluate_vit_diff_dca.py
 ```
 

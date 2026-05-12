@@ -141,10 +141,22 @@ class DCAViTEncoderLayers(nn.Module):
 def inject_vit_diff_dca(model):
     print("实例级注入 ViT Diff Attention 与 DCA 模块...")
 
+    model = inject_vit_diff(model)
+    return inject_vit_dca(model)
+
+
+def inject_vit_diff(model):
+    print("实例级注入 ViT Diff Attention 模块...")
+
     # ViT-B/16 共有 12 个 encoder block。为保持与 Swin 主线一致，只在深层注入 Diff 分支。
     for idx in (9, 10, 11):
         block = model.encoder.layers[idx]
         block.self_attention = DifferentialSelfAttention(block.self_attention)
+    return model
+
+
+def inject_vit_dca(model):
+    print("实例级注入 ViT DCA 模块...")
 
     # ViT 没有层级 stage，这里用浅/中层 block 作为 anchor，深层 block 作为 target。
     model.encoder.layers = DCAViTEncoderLayers(
@@ -156,7 +168,7 @@ def inject_vit_diff_dca(model):
     return model
 
 
-def get_vit_diff_dca_model(num_classes, pretrained=True):
+def get_vit_base_model(num_classes, pretrained=True):
     if pretrained:
         print("正在通过 torchvision 加载 ViT_B_16 (ImageNet-1K 预训练底座) ...")
         weights = models.ViT_B_16_Weights.IMAGENET1K_V1
@@ -166,7 +178,19 @@ def get_vit_diff_dca_model(num_classes, pretrained=True):
     model = models.vit_b_16(weights=weights)
     in_features = model.heads.head.in_features
     model.heads.head = nn.Linear(in_features, num_classes)
-    return inject_vit_diff_dca(model)
+    return model
+
+
+def get_vit_diff_model(num_classes, pretrained=True):
+    return inject_vit_diff(get_vit_base_model(num_classes, pretrained=pretrained))
+
+
+def get_vit_dca_model(num_classes, pretrained=True):
+    return inject_vit_dca(get_vit_base_model(num_classes, pretrained=pretrained))
+
+
+def get_vit_diff_dca_model(num_classes, pretrained=True):
+    return inject_vit_diff_dca(get_vit_base_model(num_classes, pretrained=pretrained))
 
 
 def get_fast_keywords():
