@@ -17,7 +17,7 @@ from sklearn.metrics import f1_score
 
 # ================= 配置区域 =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../data/classifier_dataset_hsv"))
+DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../../data/classifier_dataset_hsv"))
 SAVE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../result/checkpoints"))
 MODEL_NAME = "best_vit_soybean.pth"
 CLASS_INDEX_NAME = "class_indices_vit.json"

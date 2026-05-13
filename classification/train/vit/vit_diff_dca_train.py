@@ -19,7 +19,7 @@ from vit_diff_dca_model import get_fast_keywords, get_vit_diff_dca_model
 
 # ================= 配置区域：与 classification/train/vit/vit_train.py 对齐 =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../data/classifier_dataset_hsv"))
+DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../../data/classifier_dataset_hsv"))
 SAVE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../result/checkpoints"))
 MODEL_NAME = "best_vit_diff_dca_soybean.pth"
 CLASS_INDEX_NAME = "class_indices_vit_diff_dca.json"

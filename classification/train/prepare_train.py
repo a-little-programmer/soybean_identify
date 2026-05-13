@@ -9,14 +9,16 @@ import numpy as np
 import random
 
 # ================= 配置区域 =================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # 1. 输入路径
-YOLO_IMAGES_DIR = "../../data/raw_data/images"
-YOLO_LABELS_DIR = "../../data/raw_data/labels"
+YOLO_IMAGES_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../data/raw_data/images"))
+YOLO_LABELS_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../data/raw_data/labels"))
 
 # 2. 输出路径
-OUTPUT_CLASSIFIER_DIR = "../../data/classifier_dataset_hsv"
+OUTPUT_CLASSIFIER_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../data/classifier_dataset_hsv"))
 # 保留中间裁剪结果：只按标注框裁出豆粒，不做黑边正方形填充，也不做 HSV 增强。
-OUTPUT_RAW_CROP_DIR = "../../data/classifier_dataset_hsv_raw_crop"
+OUTPUT_RAW_CROP_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../data/classifier_dataset_hsv_raw_crop"))
 
 # 3. 类别列表
 CLASS_NAMES = [

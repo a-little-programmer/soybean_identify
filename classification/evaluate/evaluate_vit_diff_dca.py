@@ -24,7 +24,7 @@ from vit_diff_dca_model import get_vit_diff_dca_model  # noqa: E402
 
 # ================= 配置区域：评估变换与 ViT baseline 对齐 =================
 BASE_DIR = CURRENT_DIR
-DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../data/classifier_dataset_hsv/test"))
+DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../data/classifier_dataset_hsv/test"))
 CHECKPOINT_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../result/checkpoints"))
 WEIGHT_PATH = os.path.join(CHECKPOINT_DIR, "best_vit_diff_dca_soybean.pth")
 CLASS_INDEX_PATH = os.path.join(CHECKPOINT_DIR, "class_indices_vit_diff_dca.json")

@@ -25,7 +25,7 @@ warnings.filterwarnings("ignore")
 # ==============================
 os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../data/classifier_dataset_hsv"))
+DATA_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../../data/classifier_dataset_hsv"))
 SAVE_DIR = os.path.abspath(os.path.join(BASE_DIR, "../../../result/checkpoints"))
 MODEL_NAME = "best_swin_aligned.pth"
 CLASS_INDEX_NAME = "class_indices_swin_aligned.json"
