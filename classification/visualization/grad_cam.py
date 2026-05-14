@@ -34,7 +34,15 @@ from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 # 1. 想测哪个模型？就在这里改！
 # 可选值: 'resnet50', 'regnet', 'swin', 'vit',
 #        'swin_aligned', 'swin_diff', 'swin_dca_only', 'swin_diff_dca'
-MODEL_TYPE = {"swin_diff", "swin_dca_only", "swin_diff_dca"}
+MODEL_TYPE = {
+    "regnet",
+    "resnet50",
+    "vit",
+    "swin",
+    "swin_diff",
+    "swin_dca_only",
+    "swin_diff_dca",
+}
 # 2. 待测试的【大文件夹】路径 (程序会自动遍历里面所有的小文件夹)
 IMAGE_DIR = "/nfs/spy/soybean_detect/data/classifier_dataset_hsv/train"
 
@@ -50,11 +58,31 @@ CHECKPOINT_PATHS = {
     "swin_dca_only": os.path.join(CHECKPOINT_DIR, "best_swin_dca_only.pth"),
     "swin_diff_dca": os.path.join(CHECKPOINT_DIR, "best_swin_diff_dca_aligned.pth"),
 }
-CLASS_IDX_PATH = os.path.join(CHECKPOINT_DIR, "class_indices_regnet.json")
+CLASS_IDX_PATHS = {
+    "resnet50": os.path.join(CHECKPOINT_DIR, "class_indices_resnet50.json"),
+    "regnet": os.path.join(CHECKPOINT_DIR, "class_indices_regnet.json"),
+    "swin": os.path.join(CHECKPOINT_DIR, "class_indices_swin_baseline.json"),
+    "vit": os.path.join(CHECKPOINT_DIR, "class_indices_vit.json"),
+    "swin_aligned": os.path.join(CHECKPOINT_DIR, "class_indices_swin_baseline.json"),
+    "swin_diff": os.path.join(CHECKPOINT_DIR, "class_indices_swin_diff.json"),
+    "swin_dca_only": os.path.join(CHECKPOINT_DIR, "class_indices_swin_dca.json"),
+    "swin_diff_dca": os.path.join(CHECKPOINT_DIR, "class_indices_swin_diff_dca.json"),
+}
 
 TIMM_SWIN_ID = "swin_base_patch4_window7_224.ms_in22k_ft_in1k"
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# Swin 系列 Grad-CAM 目标层配置。
+# 默认统一使用 Stage 3 第 14 个 block 的 norm1。
+# 该层用于 Swin、Swin+Diff、Swin+DCA、Swin+Diff+DCA 的公平可视化对比。
+# 它是 DCA target block，空间分辨率高于 Stage 4，且比 Stage 4 初层更少边界伪响应。
+# 可选:
+#   SWIN_CAM_STAGE = 3  -> 中层细节更清楚，推荐用于论文可解释性图
+#   SWIN_CAM_STAGE = 4  -> 更接近分类决策，但热力图更粗、更容易响应发散
+SWIN_CAM_STAGE = 3
+SWIN_CAM_BLOCK = 14
+SWIN_CAM_SUBMODULE = "norm1"
 # =================================================
 
 def load_checkpoint(model, model_path, normalize_fn=None):
@@ -68,6 +96,24 @@ def load_checkpoint(model, model_path, normalize_fn=None):
 def reshape_transform_swin(tensor):
     # timm Swin 输出是 channels-last: [B, H, W, C]，Grad-CAM 需要 [B, C, H, W]。
     return tensor.permute(0, 3, 1, 2)
+
+def get_swin_cam_target_layer(model):
+    """返回 Swin 系列 Grad-CAM 的目标层，兼容原生 Swin 和 DCA wrapper。"""
+    stage_idx = SWIN_CAM_STAGE - 1
+    if not 0 <= stage_idx < len(model.layers):
+        raise ValueError(f"SWIN_CAM_STAGE 必须在 1 到 {len(model.layers)} 之间，当前为 {SWIN_CAM_STAGE}")
+
+    stage = model.layers[stage_idx]
+    if hasattr(stage, "orig_stage"):
+        stage = stage.orig_stage
+
+    block = stage.blocks[SWIN_CAM_BLOCK]
+    target_layer = getattr(block, SWIN_CAM_SUBMODULE)
+    print(
+        "🎯 Swin Grad-CAM 目标层: "
+        f"Stage {SWIN_CAM_STAGE}, Block {SWIN_CAM_BLOCK}, {SWIN_CAM_SUBMODULE}"
+    )
+    return target_layer
 
 def setup_model_and_cam(modeltype, num_classes):
     """根据选择的模型类型，动态初始化网络架构和 Grad-CAM 目标层"""
@@ -93,33 +139,33 @@ def setup_model_and_cam(modeltype, num_classes):
     elif modeltype == "swin":
         model = timm.create_model(TIMM_SWIN_ID, pretrained=False, num_classes=num_classes)
         load_checkpoint(model, model_path)
-        target_layers = [model.layers[-1].blocks[-1].norm1]
+        target_layers = [get_swin_cam_target_layer(model)]
         reshape_transform = reshape_transform_swin
 
     elif modeltype == "swin_aligned":
         model = timm.create_model(TIMM_SWIN_ID, pretrained=False, num_classes=num_classes)
         load_checkpoint(model, model_path)
-        target_layers = [model.layers[-1].blocks[-1].norm1]
+        target_layers = [get_swin_cam_target_layer(model)]
         reshape_transform = reshape_transform_swin
 
     elif modeltype == "swin_diff":
         model = timm.create_model(TIMM_SWIN_ID, pretrained=False, num_classes=num_classes)
         model = inject_only_diff(model)
         load_checkpoint(model, model_path)
-        target_layers = [model.layers[-1].blocks[-1].norm1]
+        target_layers = [get_swin_cam_target_layer(model)]
         reshape_transform = reshape_transform_swin
 
     elif modeltype == "swin_dca_only":
         model = timm.create_model(TIMM_SWIN_ID, pretrained=False, num_classes=num_classes)
         model = inject_dynamic_residual_routing(model)
         load_checkpoint(model, model_path, normalize_fn=normalize_dca_checkpoint)
-        target_layers = [model.layers[-1].blocks[-1].norm1]
+        target_layers = [get_swin_cam_target_layer(model)]
         reshape_transform = reshape_transform_swin
 
     elif modeltype == "swin_diff_dca":
         model = get_swin_diff_dca_model(num_classes)
         load_checkpoint(model, model_path, normalize_fn=normalize_diff_dca_checkpoint)
-        target_layers = [model.layers[-1].blocks[-1].norm1]
+        target_layers = [get_swin_cam_target_layer(model)]
         reshape_transform = reshape_transform_swin
 
     elif modeltype == "vit":
@@ -152,10 +198,11 @@ def setup_model_and_cam(modeltype, num_classes):
 
 def main(modeltype, outputdir):
     # 1. 加载类别索引
-    if not os.path.exists(CLASS_IDX_PATH):
-        print(f"❌ 找不到类别索引文件: {CLASS_IDX_PATH}")
+    class_idx_path = CLASS_IDX_PATHS[modeltype]
+    if not os.path.exists(class_idx_path):
+        print(f"❌ 找不到类别索引文件: {class_idx_path}")
         return
-    with open(CLASS_IDX_PATH, "r") as f:
+    with open(class_idx_path, "r") as f:
         class_to_idx = json.load(f)
     idx_to_class = {v: k for k, v in class_to_idx.items()}
     num_classes = len(class_to_idx)
